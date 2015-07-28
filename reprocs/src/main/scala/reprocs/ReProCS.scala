@@ -1,39 +1,36 @@
 package reprocs
 
 import breeze.linalg._
+import scala.math.sqrt
 
-object ReProCSUtils {
-  def approxBasisEnergy (m: DenseMatrix[Double], p: Double):
-      (DenseMatrix[Double], DenseVector[Double]) = {
-    val svd.SVD(u,s,v) = svd(m)
-    val t = sum(s :* s)
-    var q = 0.0
-    List.range(0,s.length).foreach(i => {
-      q += s(i)*s(i)
-      if (q > p*t) {
-        return (u(::, 0 to i), s(0 to i));
-      }
-    })
-    return (u, s);
-  }
-
-  def approxBasisN (m: DenseMatrix[Double], n: Int):
-      (DenseMatrix[Double], DenseVector[Double]) = {
-    val svd.SVD(u,s,v) = svd(m)
-    return (u(::, 0 to n - 1), s(0 to n - 1))
-  }
+class Reprocs(
+    private val param: ReprocsParam,
+    private val Pt: DenseMatrix[Double],
+    private val Tt: DenseMatrix[Double]) {
+  // TODO
 }
 
-object ReProCS extends App {
-  def runReProCS(m: DenseMatrix[Double], tTrain: Int, q: Double, b: Double,
-    alpha: Double = 20, kMin: Double = 3, kMax: Double = 10):
-      (DenseMatrix[Double], DenseMatrix[Double], DenseMatrix[Double]) = {
-    val (p, sigma) = ReProCSUtils.approxBasisEnergy(m(::, 0 to tTrain - 1), b)
-    // lots more here
+object Reprocs {
+  def apply(
+      mTrain: DenseMatrix[Double],
+      tTrain: Int,
+      param: ReprocsParam = ReprocsParam()) = {
+    val (p0, s0) = approxBasisEnergy(mTrain / sqrt(mTrain.cols), param.b)
 
-    return (m, m, m)
+    new Reprocs(param, p0, DenseMatrix.rand[Double](10, 10))
   }
 
-  val a = DenseMatrix.rand(3,3)
-  println(runReProCS(a, 2, 0, 0.9))
+  def approxBasisEnergy(mTrain: DenseMatrix[Double], b: Double):
+      (DenseMatrix[Double], DenseVector[Double]) = {
+    val svd.SVD(u, s, v) = svd(mTrain)
+    val energy = sum(s :* s)
+    var q = 0.0
+    for (i <- 0 until s.length) {
+      q += s(i) * s(i)
+      if (q > b * energy) {
+        return (u(::, 0 to i), s(0 to i))
+      }
+    }
+    (u, s)
+  }
 }

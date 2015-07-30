@@ -1,40 +1,74 @@
 package reprocs
 
+import scala.collection.immutable.Queue
+
 import breeze.linalg._
 import breeze.numerics._
 
 class Reprocs(
     private val param: ReprocsParam,
     private val subspace: DenseMatrix[Double],
-    private val supportCurrent: DenseVector[Double],
-    private val supportPrevious: DenseVector[Double],
-    private val lowRank: List[DenseVector[Double]],
+    private val supportCurrent: Option[DenseVector[Boolean]],
+    private val supportPrevious: Option[DenseVector[Boolean]],
+    private val lowRanks: Queue[DenseVector[Double]],
     private val sigMin: Double,
-    private var time: Int,
+    private var tHat: Int,
     private var flag: Boolean) {
 
-  def decompose(mt: DenseVector[Double]):
-      (DenseVector[Double], DenseVector[Double], DenseVector[Double]) = {
-    val (yt, phit) = perpProject(mt)
-    val sparseComponent = sparseRecover(yt, phit)
+  def decompose(mt: DenseVector[Double], t: Int):
+      (DenseVector[Boolean], DenseVector[Double], DenseVector[Double]) = {
+    val (phi, y) = perpProject(mt)
+    val sparseComponent = sparseRecover(t, phi, y)
     val lowRankComponent = mt - sparseComponent
-    subspaceUpdate()
-    (supportCurrent, sparseComponent, lowRankComponent)
+    subspaceUpdate(t)
+
+    supportCurrent match {
+      case Some(support) =>
+        (support, sparseComponent, lowRankComponent)
+      case None =>
+        throw new RuntimeException("something went wrong, support was not computed")
+    }
   }
 
-  def perpProject(mt: DenseVector[Double]): (DenseVector[Double], DenseMatrix[Double]) = {
-    // TODO
-
-    (DenseVector.zeros[Double](0), DenseMatrix.zeros[Double](0, 0))
+  def perpProject(mt: DenseVector[Double]): (DenseMatrix[Double], DenseVector[Double]) = {
+    val phi: DenseMatrix[Double] = DenseMatrix.eye[Double](subspace.rows) - subspace * subspace.t
+    val y: DenseVector[Double] = phi * mt
+    (phi, y)
   }
 
-  def sparseRecover(y: DenseVector[Double], phi: DenseMatrix[Double]): DenseVector[Double] = {
-    // TODO
+  def sparseRecover(t: Int, phi: DenseMatrix[Double], y: DenseVector[Double]): DenseVector[Double] = {
+    (supportCurrent, supportPrevious) match {
+      case (None, None) => {
+        // see matlab code to handle case with no support data
+      }
+      case (Some(supCurr), None) => {
+        // see matlab code to handle case with one support datum
+      }
+      case (Some(supCurr), Some(supPrev)) => {
+        val supportChange = sumBool(supCurr :& supPrev) / sumBool(supPrev)
+        if (supportChange < Reprocs.SupportChangeThreshold) {
+          // TODO: l1-minimization
+          // TODO: threshold
+        } else {
+          // TODO: weighted l1-minimization
+          // TODO: prune
+          // TODO: least-squares
+          // TODO: threshold
+        }
+        // TODO: least-squares solution to get sparse component
+      }
+    }
 
     DenseVector.zeros[Double](0)
   }
 
-  def subspaceUpdate(): Unit = {
+  def sumBool(vec: DenseVector[Boolean]): Int = {
+    var sum = 0
+    vec.foreachValue { if (_) sum += 1 }
+    sum
+  }
+
+  def subspaceUpdate(t: Int): Unit = {
     // TODO
   }
 }
@@ -42,22 +76,23 @@ class Reprocs(
 object Reprocs {
   final val Detect = true
   final val PPCA = false
+  final val SupportChangeThreshold = 0.5
 
   /* Initialization step. */
   def apply(dataTrain: DenseMatrix[Double], param: ReprocsParam = ReprocsParam()) = {
     val mTrain = preprocessData(dataTrain)
     val (subspace, sig) = approxBasisEnergy(mTrain / sqrt(mTrain.cols), param.b)
-    val r = min(subspace.cols, round(mTrain.cols / 10.0))
+    val r = min(subspace.cols, round(mTrain.cols / 10.0).toInt)
     val sigMin = sig(r)
 
     new Reprocs(
       param = param,
       subspace = subspace,
-      supportCurrent = DenseVector.zeros[Double](0),
-      supportPrevious = DenseVector.zeros[Double](0),
-      lowRank = Nil,
+      supportCurrent = None,
+      supportPrevious = None,
+      lowRanks = Queue[DenseVector[Double]](),
       sigMin = sigMin,
-      time = mTrain.cols,
+      tHat = mTrain.cols,
       flag = Detect)
   }
 

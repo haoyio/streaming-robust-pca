@@ -2,8 +2,8 @@ package reprocs
 
 import scala.collection.immutable.Queue
 
-import breeze.linalg._
-import breeze.numerics._
+import breeze.linalg.{DenseMatrix, DenseVector, min, sum, svd}
+import breeze.numerics.{sqrt, round}
 
 class Reprocs(
     private val param: ReprocsParam,
@@ -48,6 +48,7 @@ class Reprocs(
         val supportChange = sumBool(supCurr :& supPrev) / sumBool(supPrev)
         if (supportChange < Reprocs.SupportChangeThreshold) {
           // TODO: l1-minimization
+
           // TODO: threshold
         } else {
           // TODO: weighted l1-minimization
@@ -57,6 +58,7 @@ class Reprocs(
         }
         // TODO: least-squares solution to get sparse component
       }
+      case _ => throw new RuntimeException("something went wrong, previous support exists but not current support")
     }
 
     DenseVector.zeros[Double](0)

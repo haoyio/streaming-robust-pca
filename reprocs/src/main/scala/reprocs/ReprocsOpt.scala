@@ -3,7 +3,7 @@ package reprocs
 import breeze.linalg.DenseVector
 import breeze.numerics.signum
 
-object Optim {
+object ReprocsOpt {
   final val Tolerance = 1e-6
 
   /* ||x||_{1} subgradient */

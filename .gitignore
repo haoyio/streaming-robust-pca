@@ -56,7 +56,6 @@
 *.swp
 *.ipynb
 *.ipynb_checkpoints
-reprocs-old
 
 # Scala Specific #
 ##################

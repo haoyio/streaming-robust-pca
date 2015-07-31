@@ -2,14 +2,14 @@ package reprocs
 
 import scala.collection.immutable.Queue
 
-import breeze.linalg.{DenseMatrix, DenseVector, min, sum, svd}
-import breeze.numerics.{sqrt, round}
+import breeze.linalg._
+import breeze.numerics.{round, sqrt}
 
 class Reprocs(
     private val param: ReprocsParam,
     private val subspace: DenseMatrix[Double],
-    private val supportCurrent: Option[DenseVector[Boolean]],
-    private val supportPrevious: Option[DenseVector[Boolean]],
+    private val supportCurrent: DenseVector[Boolean],
+    private val supportPrevious: DenseVector[Boolean],
     private val lowRanks: Queue[DenseVector[Double]],
     private val sigMin: Double,
     private var tHat: Int,
@@ -17,17 +17,14 @@ class Reprocs(
 
   def decompose(mt: DenseVector[Double], t: Int):
       (DenseVector[Boolean], DenseVector[Double], DenseVector[Double]) = {
+
     val (phi, y) = perpProject(mt)
-    val sparseComponent = sparseRecover(t, phi, y)
+    val sparseComponent = sparseRecover(t, mt, phi, y)
     val lowRankComponent = mt - sparseComponent
     subspaceUpdate(t)
 
-    supportCurrent match {
-      case Some(support) =>
-        (support, sparseComponent, lowRankComponent)
-      case None =>
-        throw new RuntimeException("something went wrong, support was not computed")
-    }
+    assert(!ReprocsUtil.isEmpty(supportCurrent))
+    (supportCurrent, sparseComponent, lowRankComponent)
   }
 
   def perpProject(mt: DenseVector[Double]): (DenseMatrix[Double], DenseVector[Double]) = {
@@ -36,38 +33,66 @@ class Reprocs(
     (phi, y)
   }
 
-  def sparseRecover(t: Int, phi: DenseMatrix[Double], y: DenseVector[Double]): DenseVector[Double] = {
-    (supportCurrent, supportPrevious) match {
-      case (None, None) => {
-        // see matlab code to handle case with no support data
-      }
-      case (Some(supCurr), None) => {
-        // see matlab code to handle case with one support datum
-      }
-      case (Some(supCurr), Some(supPrev)) => {
-        val supportChange = sumBool(supCurr :& supPrev) / sumBool(supPrev)
-        if (supportChange < Reprocs.SupportChangeThreshold) {
-          // TODO: l1-minimization
+  def sparseRecover(
+      t: Int,
+      mt: DenseVector[Double],
+      phi: DenseMatrix[Double],
+      y: DenseVector[Double]): DenseVector[Double] = {
 
-          // TODO: threshold
-        } else {
-          // TODO: weighted l1-minimization
-          // TODO: prune
-          // TODO: least-squares
-          // TODO: threshold
-        }
-        // TODO: least-squares solution to get sparse component
+    if (  // no previous support
+        ReprocsUtil.isEmpty(supportCurrent) &&
+        ReprocsUtil.isEmpty(supportPrevious)) {
+
+      // TODO: see matlab code to handle case with no previous support
+
+    } else if (  // only one previous support
+        !ReprocsUtil.isEmpty(supportCurrent) &&
+        ReprocsUtil.isEmpty(supportPrevious)) {
+
+      // TODO: see matlab code to handle case with one previous support
+
+    } else if (  // at least two previous supports
+        !ReprocsUtil.isEmpty(supportCurrent) &&
+        !ReprocsUtil.isEmpty(supportPrevious)) {
+
+      val supportChange = ReprocsUtil.getSupportIntersect(supportCurrent, supportPrevious)
+
+      if (supportChange < Reprocs.SupportChangeThreshold) {
+        val sparseCS = ReprocsUtil.l1Min(y, phi, lowRanks.head)
+
+        supportPrevious := supportCurrent
+        supportCurrent :=
+          ReprocsUtil.thresh(
+            x = sparseCS,
+            w = param.q * sqrt(mt.t * mt / subspace.rows))
+      } else {
+        val sparseCS =
+          ReprocsUtil.weightedL1Min(
+            y = y,
+            phi = phi,
+            ksi = norm(phi * lowRanks.head, 2),
+            support = supportCurrent,
+            lambda = ReprocsUtil.getSupportDiff(supportCurrent, supportPrevious))
+
+        val supportAdd =
+          ReprocsUtil.prune(
+            x = sparseCS,
+            k = (Reprocs.PruneFactor * ReprocsUtil.sumBool(supportCurrent)).toInt)
+
+        val sparseAdd = ReprocsUtil.subLeastSquares(y, phi, supportAdd)
+
+        supportPrevious := supportCurrent
+        supportCurrent :=
+          ReprocsUtil.thresh(
+            x = sparseAdd,
+            w = param.q * sqrt(mt.t * mt / subspace.rows))
       }
-      case _ => throw new RuntimeException("something went wrong, previous support exists but not current support")
+    } else {
+      throw new RuntimeException("previous support exists but not current support")
     }
 
-    DenseVector.zeros[Double](0)
-  }
-
-  def sumBool(vec: DenseVector[Boolean]): Int = {
-    var sum = 0
-    vec.foreachValue { if (_) sum += 1 }
-    sum
+    val sparseComponent = ReprocsUtil.subLeastSquares(y, phi, supportCurrent)
+    sparseComponent
   }
 
   def subspaceUpdate(t: Int): Unit = {
@@ -79,6 +104,7 @@ object Reprocs {
   final val Detect = true
   final val PPCA = false
   final val SupportChangeThreshold = 0.5
+  final val PruneFactor = 1.4
 
   /* Initialization step. */
   def apply(dataTrain: DenseMatrix[Double], param: ReprocsParam = ReprocsParam()) = {
@@ -90,13 +116,15 @@ object Reprocs {
     new Reprocs(
       param = param,
       subspace = subspace,
-      supportCurrent = None,
-      supportPrevious = None,
+      supportCurrent = emptySupport(),
+      supportPrevious = emptySupport(),
       lowRanks = Queue[DenseVector[Double]](),
       sigMin = sigMin,
       tHat = mTrain.cols,
       flag = Detect)
   }
+
+  def emptySupport() = DenseVector.zeros[Boolean](0)
 
   def preprocessData(dataTrain: DenseMatrix[Double]): DenseMatrix[Double] = {
     val muTrain = for (irow <- 0 until dataTrain.rows) yield sum(dataTrain(irow, ::)) / dataTrain.cols
@@ -109,6 +137,7 @@ object Reprocs {
 
   def approxBasisEnergy(mTrain: DenseMatrix[Double], b: Double):
       (DenseMatrix[Double], DenseVector[Double]) = {
+
     val svd.SVD(u, s, _) = svd(mTrain)
     val energy = sum(s :* s)
     var energySoFar = 0.0

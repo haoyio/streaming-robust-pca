@@ -1,6 +1,7 @@
 package reprocs
 
 import scala.collection.mutable
+import scala.collection.immutable.Queue
 
 import breeze.linalg.{DenseMatrix, DenseVector, norm}
 import breeze.numerics._
@@ -104,5 +105,33 @@ object ReprocsUtil {
 
     // TODO
     DenseVector.zeros[Double](0)
+  }
+
+  def getNewSubspace(
+      alpha: Double,
+      subspace: DenseMatrix[Double],
+      lowRanks: Queue[DenseVector[Double]]): DenseMatrix[Double] = {
+
+    //TODO
+    DenseMatrix.zeros[Double](0, 0)
+  }
+
+  def containsGreater(x: DenseVector[Double], s: Double): Boolean = {
+    for (ix <- 0 until x.length) {
+      if (x(ix) > s) {
+        return true
+      }
+    }
+    false
+  }
+
+  def countGreater(x: DenseVector[Double], s: Double): Int = {
+    var result = 0
+    for (ix <- 0 until x.length) {
+      if (x(ix) > s) {
+        result += 1
+      }
+    }
+    result
   }
 }

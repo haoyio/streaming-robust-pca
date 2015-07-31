@@ -13,7 +13,8 @@ class Reprocs(
     private val lowRanks: Queue[DenseVector[Double]],
     private val sigMin: Double,
     private var tHat: Int,
-    private var flag: Boolean) {
+    private var flag: Boolean,
+    private var k: Int) {
 
   def decompose(mt: DenseVector[Double], t: Int):
       (DenseVector[Boolean], DenseVector[Double], DenseVector[Double]) = {
@@ -96,7 +97,25 @@ class Reprocs(
   }
 
   def subspaceUpdate(t: Int): Unit = {
-    // TODO
+    val modVal = (t - tHat + 1) % param.alpha
+    if (flag == Reprocs.Detect && modVal == 0) {
+      // check if subspace update is required
+      val svd.SVD(_, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspace, lowRanks))
+      if (ReprocsUtil.containsGreater(s, sigMin)) {
+        // set up variables for subspace update
+        flag = Reprocs.PPCA
+        tHat = t - param.alpha + 1
+        k = 1
+      }
+    }
+
+    if (flag == Reprocs.PPCA && modVal == 0) {
+      // subspace update
+      val svd.SVD(u, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspace, lowRanks))
+      val numSingularVectors = min(param.alpha / 3, ReprocsUtil.countGreater(s, sigMin))
+
+      // TODO: wtf i don't get the subscripts nor the matlab code; emailing author
+    }
   }
 }
 
@@ -121,7 +140,8 @@ object Reprocs {
       lowRanks = Queue[DenseVector[Double]](),
       sigMin = sigMin,
       tHat = mTrain.cols,
-      flag = Detect)
+      flag = Detect,
+      k = 0)
   }
 
   def emptySupport() = DenseVector.zeros[Boolean](0)

@@ -7,7 +7,10 @@ import breeze.numerics.{round, sqrt}
 
 class Reprocs(
     private val param: ReprocsParam,
-    private val subspace: DenseMatrix[Double],
+    private val mTrainLast: DenseVector[Double],
+    private var subspaceRecover: DenseMatrix[Double],
+    private var subspaceProject: DenseMatrix[Double],
+    private val subspaceChanges: Queue[Double],
     private val supportCurrent: DenseVector[Boolean],
     private val supportPrevious: DenseVector[Boolean],
     private val lowRanks: Queue[DenseVector[Double]],
@@ -29,7 +32,8 @@ class Reprocs(
   }
 
   def perpProject(mt: DenseVector[Double]): (DenseMatrix[Double], DenseVector[Double]) = {
-    val phi: DenseMatrix[Double] = DenseMatrix.eye[Double](subspace.rows) - subspace * subspace.t
+    val phi: DenseMatrix[Double] =
+      DenseMatrix.eye[Double](subspaceRecover.rows) - subspaceRecover * subspaceRecover.t
     val y: DenseVector[Double] = phi * mt
     (phi, y)
   }
@@ -44,13 +48,25 @@ class Reprocs(
         ReprocsUtil.isEmpty(supportCurrent) &&
         ReprocsUtil.isEmpty(supportPrevious)) {
 
-      // TODO: see matlab code to handle case with no previous support
+      val sparseCS = ReprocsUtil.l1Min(y, phi, mTrainLast)
+
+      supportPrevious := supportCurrent
+      supportCurrent :=
+        ReprocsUtil.thresh(
+          x = sparseCS,
+          w = param.q * sqrt(mt.t * mt / subspaceRecover.rows))
 
     } else if (  // only one previous support
         !ReprocsUtil.isEmpty(supportCurrent) &&
         ReprocsUtil.isEmpty(supportPrevious)) {
 
-      // TODO: see matlab code to handle case with one previous support
+      val sparseCS = ReprocsUtil.l1Min(y, phi, lowRanks.head)
+
+      supportPrevious := supportCurrent
+      supportCurrent :=
+        ReprocsUtil.thresh(
+          x = sparseCS,
+          w = param.q * sqrt(mt.t * mt / subspaceRecover.rows))
 
     } else if (  // at least two previous supports
         !ReprocsUtil.isEmpty(supportCurrent) &&
@@ -65,7 +81,8 @@ class Reprocs(
         supportCurrent :=
           ReprocsUtil.thresh(
             x = sparseCS,
-            w = param.q * sqrt(mt.t * mt / subspace.rows))
+            w = param.q * sqrt(mt.t * mt / subspaceRecover.rows))
+
       } else {
         val sparseCS =
           ReprocsUtil.weightedL1Min(
@@ -86,7 +103,7 @@ class Reprocs(
         supportCurrent :=
           ReprocsUtil.thresh(
             x = sparseAdd,
-            w = param.q * sqrt(mt.t * mt / subspace.rows))
+            w = param.q * sqrt(mt.t * mt / subspaceRecover.rows))
       }
     } else {
       throw new RuntimeException("previous support exists but not current support")
@@ -110,9 +127,10 @@ class Reprocs(
 
   def subspaceUpdate(t: Int): Unit = {
     val modVal = (t - tHat + 1) % param.alpha
+
     if (flag == Reprocs.Detect && modVal == 0) {
       // check if subspace update is required
-      val svd.SVD(_, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspace, lowRanks))
+      val svd.SVD(_, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
       if (ReprocsUtil.containsGreater(s, sigMin)) {
         // set up variables for subspace update
         flag = Reprocs.PPCA
@@ -122,11 +140,22 @@ class Reprocs(
     }
 
     if (flag == Reprocs.PPCA && modVal == 0) {
-      // subspace update
-      val svd.SVD(u, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspace, lowRanks))
+      // sparse recovery subspace update
+      val svd.SVD(u, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
       val numSingularVectors = min(param.alpha / 3, ReprocsUtil.countGreater(s, sigMin))
+      val newSubspaceComponent = u(::, 0 until numSingularVectors)
+      subspaceRecover = DenseMatrix.horzcat(subspaceProject, newSubspaceComponent)
+      k += 1
 
-      // TODO: wtf i don't get the subscripts nor the matlab code; emailing author
+      if (
+          k == param.kmax ||
+          (k >= param.kmin &&
+          ReprocsUtil.subspaceChangeSmall(subspaceChanges, lowRanks, newSubspaceComponent))) {
+
+        // project PCA subspace update
+        subspaceProject = copy(subspaceRecover)
+        flag = Reprocs.Detect
+      }
     }
   }
 }
@@ -136,17 +165,22 @@ object Reprocs {
   final val PPCA = false
   final val SupportChangeThreshold = 0.5
   final val PruneFactor = 1.4
+  final val SubspaceChangeThreshold = 0.01
+  final val SubspaceChangeNum = 3
 
   /* Initialization step. */
   def apply(dataTrain: DenseMatrix[Double], param: ReprocsParam = ReprocsParam()) = {
     val mTrain = preprocessData(dataTrain)
-    val (subspace, sig) = approxBasisEnergy(mTrain / sqrt(mTrain.cols), param.b)
-    val r = min(subspace.cols, round(mTrain.cols / 10.0).toInt)
+    val (subspaceRecover, sig) = approxBasisEnergy(mTrain / sqrt(mTrain.cols), param.b)
+    val r = min(subspaceRecover.cols, round(mTrain.cols / 10.0).toInt)
     val sigMin = sig(r)
 
     new Reprocs(
       param = param,
-      subspace = subspace,
+      mTrainLast = mTrain(::, mTrain.cols - 1),
+      subspaceRecover = subspaceRecover,
+      subspaceProject = subspaceRecover,
+      subspaceChanges = Queue[Double](),
       supportCurrent = emptySupport(),
       supportPrevious = emptySupport(),
       lowRanks = Queue[DenseVector[Double]](),

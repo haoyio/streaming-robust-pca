@@ -134,4 +134,13 @@ object ReprocsUtil {
     }
     result
   }
+
+  def subspaceChangeSmall(
+      subspaceChanges: Queue[Double],
+      lowRanks: Queue[DenseVector[Double]],
+      newSubspaceComponent: DenseMatrix[Double]): Boolean = {
+
+    // TODO
+    false
+  }
 }

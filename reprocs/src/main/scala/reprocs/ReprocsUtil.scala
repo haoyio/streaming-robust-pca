@@ -136,11 +136,15 @@ object ReprocsUtil {
   }
 
   def subspaceChangeSmall(
+      k: Int,
+      newSubspaceComponent: DenseMatrix[Double],
       subspaceChanges: Queue[Double],
-      lowRanks: Queue[DenseVector[Double]],
-      newSubspaceComponent: DenseMatrix[Double]): Boolean = {
+      lowRanks: Queue[DenseVector[Double]]): Boolean = {
+
+    var changeSmall = false
 
     // TODO
-    false
+
+    changeSmall
   }
 }

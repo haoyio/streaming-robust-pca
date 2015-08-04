@@ -74,7 +74,7 @@ class Reprocs(
 
       val supportChange = ReprocsUtil.getSupportIntersect(supportCurrent, supportPrevious)
 
-      if (supportChange < Reprocs.SupportChangeThreshold) {
+      if (supportChange < param.supportChangeThreshold) {
         val sparseCS = ReprocsUtil.l1Min(y, phi, lowRanks.head)
 
         supportPrevious := supportCurrent
@@ -95,7 +95,7 @@ class Reprocs(
         val supportAdd =
           ReprocsUtil.prune(
             x = sparseCS,
-            k = (Reprocs.PruneFactor * ReprocsUtil.sumBool(supportCurrent)).toInt)
+            k = (param.pruneFactor * ReprocsUtil.sumBool(supportCurrent)).toInt)
 
         val sparseAdd = ReprocsUtil.subLeastSquares(y, phi, supportAdd)
 
@@ -135,7 +135,7 @@ class Reprocs(
         // set up variables for subspace update
         flag = Reprocs.PPCA
         tHat = t - param.alpha + 1
-        k = 1
+        k = 0
       }
     }
 
@@ -150,7 +150,7 @@ class Reprocs(
       if (
           k == param.kmax ||
           (k >= param.kmin &&
-          ReprocsUtil.subspaceChangeSmall(subspaceChanges, lowRanks, newSubspaceComponent))) {
+          ReprocsUtil.subspaceChangeSmall(k, newSubspaceComponent, subspaceChanges, lowRanks))) {
 
         // project PCA subspace update
         subspaceProject = copy(subspaceRecover)
@@ -163,10 +163,6 @@ class Reprocs(
 object Reprocs {
   final val Detect = true
   final val PPCA = false
-  final val SupportChangeThreshold = 0.5
-  final val PruneFactor = 1.4
-  final val SubspaceChangeThreshold = 0.01
-  final val SubspaceChangeNum = 3
 
   /* Initialization step. */
   def apply(dataTrain: DenseMatrix[Double], param: ReprocsParam = ReprocsParam()) = {

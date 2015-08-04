@@ -21,7 +21,7 @@ class Reprocs(
 
     val (phi, y) = perpProject(mt)
     val sparseComponent = sparseRecover(t, mt, phi, y)
-    val lowRankComponent = mt - sparseComponent
+    val lowRankComponent = lowRankEstimate(mt, sparseComponent)
     subspaceUpdate(t)
 
     assert(!ReprocsUtil.isEmpty(supportCurrent))
@@ -94,6 +94,18 @@ class Reprocs(
 
     val sparseComponent = ReprocsUtil.subLeastSquares(y, phi, supportCurrent)
     sparseComponent
+  }
+
+  def lowRankEstimate(
+      mt: DenseVector[Double],
+      sparseComponent: DenseVector[Double]): DenseVector[Double] = {
+
+    val lowRankComponent = mt - sparseComponent
+    lowRanks.enqueue(lowRankComponent)
+    if (lowRanks.length > param.alpha) {
+      lowRanks.dequeue
+    }
+    lowRankComponent
   }
 
   def subspaceUpdate(t: Int): Unit = {

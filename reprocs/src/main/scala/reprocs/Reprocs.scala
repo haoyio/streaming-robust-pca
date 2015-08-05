@@ -10,7 +10,9 @@ class Reprocs(
     private val mTrainLast: DenseVector[Double],
     private var subspaceRecover: DenseMatrix[Double],
     private var subspaceProject: DenseMatrix[Double],
-    private val subspaceChanges: Queue[Double],
+    private var newSubspaceComponent: DenseMatrix[Double],
+    private val subspaceChangesDiff: Queue[Double],
+    private val subspaceChangesBase: Queue[Double],
     private val supportCurrent: DenseVector[Boolean],
     private val supportPrevious: DenseVector[Boolean],
     private val lowRanks: Queue[DenseVector[Double]],
@@ -126,9 +128,8 @@ class Reprocs(
   }
 
   def subspaceUpdate(t: Int): Unit = {
-    val modVal = (t - tHat + 1) % param.alpha
-
-    if (flag == Reprocs.Detect && modVal == 0) {
+    val modValDetect = (t - tHat + 1) % param.alpha
+    if (flag == Reprocs.Detect && modValDetect== 0) {
       // check if subspace update is required
       val svd.SVD(_, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
       if (ReprocsUtil.containsGreater(s, sigMin)) {
@@ -139,18 +140,28 @@ class Reprocs(
       }
     }
 
-    if (flag == Reprocs.PPCA && modVal == 0) {
+    val modValPPCA = (t - tHat + 1) % param.alpha
+    if (flag == Reprocs.PPCA && modValPPCA == 0) {
       // sparse recovery subspace update
       val svd.SVD(u, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
       val numSingularVectors = min(param.alpha / 3, ReprocsUtil.countGreater(s, sigMin))
-      val newSubspaceComponent = u(::, 0 until numSingularVectors)
+      val oldSubspaceComponent = copy(newSubspaceComponent)
+      newSubspaceComponent = u(::, 0 until numSingularVectors)
       subspaceRecover = DenseMatrix.horzcat(subspaceProject, newSubspaceComponent)
       k += 1
+
+      ReprocsUtil.updateSubspaceChanges(
+        k,
+        newSubspaceComponent,
+        oldSubspaceComponent,
+        subspaceChangesDiff,
+        subspaceChangesBase,
+        lowRanks)
 
       if (
           k == param.kmax ||
           (k >= param.kmin &&
-          ReprocsUtil.subspaceChangeSmall(k, newSubspaceComponent, subspaceChanges, lowRanks))) {
+          ReprocsUtil.subspaceChangeSmall(subspaceChangesDiff, subspaceChangesBase))) {
 
         // project PCA subspace update
         subspaceProject = copy(subspaceRecover)
@@ -176,7 +187,9 @@ object Reprocs {
       mTrainLast = mTrain(::, mTrain.cols - 1),
       subspaceRecover = subspaceRecover,
       subspaceProject = subspaceRecover,
-      subspaceChanges = Queue[Double](),
+      newSubspaceComponent = emptySubspaceComponent(),
+      subspaceChangesDiff = Queue[Double](),
+      subspaceChangesBase = Queue[Double](),
       supportCurrent = emptySupport(),
       supportPrevious = emptySupport(),
       lowRanks = Queue[DenseVector[Double]](),
@@ -185,6 +198,8 @@ object Reprocs {
       flag = Detect,
       k = 0)
   }
+
+  def emptySubspaceComponent() = DenseMatrix.zeros[Double](0, 0)
 
   def emptySupport() = DenseVector.zeros[Boolean](0)
 

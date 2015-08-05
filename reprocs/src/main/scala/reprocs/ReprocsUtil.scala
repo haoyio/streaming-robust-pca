@@ -135,12 +135,22 @@ object ReprocsUtil {
     result
   }
 
-  def subspaceChangeSmall(
+  def updateSubspaceChanges(
       k: Int,
       newSubspaceComponent: DenseMatrix[Double],
-      subspaceChanges: Queue[Double],
-      lowRanks: Queue[DenseVector[Double]]): Boolean = {
+      oldSubspaceComponent: DenseMatrix[Double],
+      subspaceChangesDiff: Queue[Double],
+      subspaceChangesBase: Queue[Double],
+      lowRanks: Queue[DenseVector[Double]]): Unit = {
 
+    // TODO
+  }
+
+  def subspaceChangeSmall(
+      subspaceChangesDiff: Queue[Double],
+      subspaceChangesBase: Queue[Double]): Boolean = {
+
+    // note: since k >= kmin, we have at least kmin elements in subspaceChangesXXXX
     var changeSmall = false
 
     // TODO

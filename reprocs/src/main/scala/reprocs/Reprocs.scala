@@ -1,6 +1,6 @@
 package reprocs
 
-import scala.collection.immutable.Queue
+import scala.collection.mutable
 
 import breeze.linalg._
 import breeze.numerics.{round, sqrt}
@@ -11,11 +11,11 @@ class Reprocs(
     private var subspaceRecover: DenseMatrix[Double],
     private var subspaceProject: DenseMatrix[Double],
     private var newSubspaceComponent: DenseMatrix[Double],
-    private val subspaceChangesDiff: Queue[Double],
-    private val subspaceChangesBase: Queue[Double],
+    private val subspaceChangesDiff: mutable.Queue[Double],
+    private val subspaceChangesBase: mutable.Queue[Double],
     private val supportCurrent: DenseVector[Boolean],
     private val supportPrevious: DenseVector[Boolean],
-    private val lowRanks: Queue[DenseVector[Double]],
+    private val lowRanks: mutable.Queue[DenseVector[Double]],
     private val sigMin: Double,
     private var tHat: Int,
     private var flag: Boolean,
@@ -122,7 +122,7 @@ class Reprocs(
     val lowRankComponent = mt - sparseComponent
     lowRanks.enqueue(lowRankComponent)
     if (lowRanks.length > param.alpha) {
-      lowRanks.dequeue
+      lowRanks.dequeue()
     }
     lowRankComponent
   }
@@ -156,12 +156,13 @@ class Reprocs(
         oldSubspaceComponent,
         subspaceChangesDiff,
         subspaceChangesBase,
-        lowRanks)
+        lowRanks,
+        param)
 
       if (
           k == param.kmax ||
           (k >= param.kmin &&
-          ReprocsUtil.subspaceChangeSmall(subspaceChangesDiff, subspaceChangesBase))) {
+          ReprocsUtil.subspaceChangeSmall(subspaceChangesDiff, subspaceChangesBase, param))) {
 
         // project PCA subspace update
         subspaceProject = copy(subspaceRecover)
@@ -188,11 +189,11 @@ object Reprocs {
       subspaceRecover = subspaceRecover,
       subspaceProject = subspaceRecover,
       newSubspaceComponent = emptySubspaceComponent(),
-      subspaceChangesDiff = Queue[Double](),
-      subspaceChangesBase = Queue[Double](),
+      subspaceChangesDiff = mutable.Queue[Double](),
+      subspaceChangesBase = mutable.Queue[Double](),
       supportCurrent = emptySupport(),
       supportPrevious = emptySupport(),
-      lowRanks = Queue[DenseVector[Double]](),
+      lowRanks = mutable.Queue[DenseVector[Double]](),
       sigMin = sigMin,
       tHat = mTrain.cols,
       flag = Detect,

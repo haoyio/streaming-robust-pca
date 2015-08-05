@@ -8,8 +8,7 @@ class ReprocsParam(
     val kmax: Int,
     val supportChangeThreshold: Double,
     val pruneFactor: Double,
-    val subspaceChangeThreshold: Double,
-    val subspaceChangeNum: Int)
+    val subspaceChangeThreshold: Double)
 
 object ReprocsParam {
   final val Q: Double = 1.0
@@ -31,8 +30,7 @@ object ReprocsParam {
       kmax: Int = KMax,
       supportChangeThreshold: Double = SupportChangeThreshold,
       pruneFactor: Double = PruneFactor,
-      subspaceChangeThreshold: Double = SubspaceChangeThreshold,
-      subspaceChangeNum: Int = SubspaceChangeNum) =
+      subspaceChangeThreshold: Double = SubspaceChangeThreshold) =
     new ReprocsParam(
       q = q,
       b = b,
@@ -41,6 +39,5 @@ object ReprocsParam {
       kmax = kmax,
       supportChangeThreshold = supportChangeThreshold,
       pruneFactor = pruneFactor,
-      subspaceChangeThreshold = subspaceChangeThreshold,
-      subspaceChangeNum = subspaceChangeNum)
+      subspaceChangeThreshold = subspaceChangeThreshold)
 }

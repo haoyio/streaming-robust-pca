@@ -1,9 +1,8 @@
 package reprocs
 
 import scala.collection.mutable
-import scala.collection.immutable.Queue
 
-import breeze.linalg.{DenseMatrix, DenseVector, norm}
+import breeze.linalg.{DenseMatrix, DenseVector, norm, svd}
 import breeze.numerics._
 import breeze.stats.regression.leastSquares
 
@@ -110,10 +109,19 @@ object ReprocsUtil {
   def getNewSubspace(
       alpha: Double,
       subspace: DenseMatrix[Double],
-      lowRanks: Queue[DenseVector[Double]]): DenseMatrix[Double] = {
+      lowRanks: mutable.Queue[DenseVector[Double]]): DenseMatrix[Double] = {
 
-    //TODO
-    DenseMatrix.zeros[Double](0, 0)
+    val lowRankMatrix: DenseMatrix[Double] = getLowRankMatrix(lowRanks)
+    val projectee: DenseMatrix[Double] = DenseMatrix.eye[Double](subspace.rows) - subspace * subspace.t
+    projectee * lowRankMatrix
+  }
+
+  def getLowRankMatrix(lowRanks: mutable.Queue[DenseVector[Double]]): DenseMatrix[Double] = {
+    val lowRankMatrix = DenseMatrix.zeros[Double](lowRanks.head.length, lowRanks.length)
+    for (icol <- lowRanks.indices) {
+      lowRankMatrix(::, icol) := lowRanks(icol)
+    }
+    lowRankMatrix
   }
 
   def containsGreater(x: DenseVector[Double], s: Double): Boolean = {
@@ -139,22 +147,53 @@ object ReprocsUtil {
       k: Int,
       newSubspaceComponent: DenseMatrix[Double],
       oldSubspaceComponent: DenseMatrix[Double],
-      subspaceChangesDiff: Queue[Double],
-      subspaceChangesBase: Queue[Double],
-      lowRanks: Queue[DenseVector[Double]]): Unit = {
+      subspaceChangesDiff: mutable.Queue[Double],
+      subspaceChangesBase: mutable.Queue[Double],
+      lowRanks: mutable.Queue[DenseVector[Double]],
+      param: ReprocsParam): Unit = {
 
-    // TODO
+    val lowRankMatrix = getLowRankMatrix(lowRanks)
+    if (k == 1) {
+      val projectionVal: DenseMatrix[Double] =
+        newSubspaceComponent * (newSubspaceComponent.t * lowRankMatrix)
+      val normVal = matrixNorm(projectionVal / sqrt(param.alpha))
+      subspaceChangesDiff.enqueue(normVal)
+      subspaceChangesBase.enqueue(normVal)
+    } else {
+      val projectionBase: DenseMatrix[Double] =
+        newSubspaceComponent * (newSubspaceComponent.t * lowRankMatrix)
+      val normBase = matrixNorm(projectionBase)
+      subspaceChangesBase.enqueue(normBase)
+
+      val projectionDiff: DenseMatrix[Double] =
+        projectionBase - oldSubspaceComponent * (oldSubspaceComponent.t * lowRankMatrix)
+      val normDiff =  matrixNorm(projectionDiff)
+      subspaceChangesDiff.enqueue(normDiff)
+    }
+
+    if (subspaceChangesBase.length > param.kmin) {
+      subspaceChangesBase.dequeue()
+    }
+    if (subspaceChangesDiff.length > param.kmin) {
+      subspaceChangesDiff.dequeue()
+    }
+  }
+
+  def matrixNorm(mat: DenseMatrix[Double]): Double = {
+    val svd.SVD(_, s, _) = svd(mat)
+    s(0)
   }
 
   def subspaceChangeSmall(
-      subspaceChangesDiff: Queue[Double],
-      subspaceChangesBase: Queue[Double]): Boolean = {
+      subspaceChangesDiff: mutable.Queue[Double],
+      subspaceChangesBase: mutable.Queue[Double],
+      param: ReprocsParam): Boolean = {
 
-    // note: since k >= kmin, we have at least kmin elements in subspaceChangesXXXX
+    // k >= kmin and subspaceChangesXXXX has at most kmin elements, so they have length kmin
     var changeSmall = false
-
-    // TODO
-
+    for (i <- 0 until param.kmin - 1) {
+      changeSmall &= subspaceChangesDiff(i + 1) / subspaceChangesBase(i) < param.subspaceChangeThreshold
+    }
     changeSmall
   }
 }

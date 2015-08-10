@@ -1,4 +1,4 @@
-import breeze.linalg.{DenseMatrix, DenseVector, norm}
+import breeze.linalg.{DenseMatrix, DenseVector, norm, svd}
 import breeze.optimize.{DiffFunction, ProjectedQuasiNewton}
 
 import reprocs._
@@ -35,8 +35,21 @@ object TestReprocs extends App {
     println("minimizer = " + res + "\nminimum = " + f(res))
   }
 
+  def serialSVD(mat: DenseMatrix[Double]): (DenseMatrix[Double], DenseVector[Double]) = {
+    val svd.SVD(u, s, _) = svd(mat)
+    (u, s)
+  }
+
+  def testSVD(): Unit = {
+
+    // TODO: test distributed version of mySVD against serialSVD
+
+  }
+
   // main script begins here
   val reprocs = Reprocs(DenseMatrix.rand[Double](10, 10))
   testL1Min()
   testWeightedL1Min()
+
+  testSVD()
 }

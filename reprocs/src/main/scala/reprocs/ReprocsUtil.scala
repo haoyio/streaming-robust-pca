@@ -1,13 +1,22 @@
 package reprocs
 
+import org.apache.spark.{SparkContext, SparkConf}
+
 import scala.collection.mutable
 
 import breeze.linalg.{DenseMatrix, DenseVector, norm, svd}
 import breeze.numerics._
 import breeze.stats.regression.leastSquares
 
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.linalg.{Matrix => SparkMatrix, Vector => SparkVector, DenseVector => SparkDenseVector}
+import org.apache.spark.mllib.linalg.distributed.{RowMatrix => SparkRowMatrix}
+import org.apache.spark.mllib.linalg.SingularValueDecomposition
+
 object ReprocsUtil {
   final val AllSingularValues = 0
+  final val AppName = "Reprocs"
+  final val MasterString = "local[*]"
 
   def isEmpty(support: DenseVector[Boolean]) = support.length == 0
 
@@ -201,6 +210,7 @@ object ReprocsUtil {
       mat: DenseMatrix[Double],
       top: Int = AllSingularValues): DenseVector[Double] = top match {
 
+    /* // serial version
     case AllSingularValues =>
       val svd.SVD(_, s, _) = svd(mat)
       s
@@ -208,12 +218,25 @@ object ReprocsUtil {
     case _ =>
       val svd.SVD(_, s, _) = svd(mat)
       s(0 until top)
+     */
+
+    // distributed version
+    case AllSingularValues =>
+      val svd: SingularValueDecomposition[SparkRowMatrix, SparkMatrix] =
+        toSparkRowMatrix(mat).computeSVD(mat.cols, computeU = false)
+      toBreezeVector(svd.s)
+
+    case _ =>
+      val svd: SingularValueDecomposition[SparkRowMatrix, SparkMatrix] =
+        toSparkRowMatrix(mat).computeSVD(top, computeU = false)
+      toBreezeVector(svd.s)
   }
 
   /* Returns the largest |top| singular values and their associated left singular vectors. */
   def mySVD(mat: DenseMatrix[Double], top: Int = AllSingularValues):
       (DenseMatrix[Double], DenseVector[Double]) = top match {
 
+    /* // serial version
     case AllSingularValues =>
       val svd.SVD(u, s, _) = svd(mat)
       (u, s)
@@ -221,5 +244,52 @@ object ReprocsUtil {
     case _ =>
       val svd.SVD(u, s, _) = svd(mat)
       (u(::, 0 until top), s(0 until top))
+     */
+
+    // distributed version
+    case AllSingularValues =>
+      val svd: SingularValueDecomposition[SparkRowMatrix, SparkMatrix] =
+        toSparkRowMatrix(mat).computeSVD(mat.cols, computeU = true)
+      (toBreezeMatrix(svd.U), toBreezeVector(svd.s))
+
+    case _ =>
+      val svd: SingularValueDecomposition[SparkRowMatrix, SparkMatrix] =
+        toSparkRowMatrix(mat).computeSVD(top, computeU = true)
+      (toBreezeMatrix(svd.U), toBreezeVector(svd.s))
+  }
+
+  def toSparkRowMatrix(bmat: DenseMatrix[Double]): SparkRowMatrix = {
+    val sparkConf = new SparkConf().setAppName(AppName)
+                                   .setMaster(MasterString)
+    val sc = new SparkContext(sparkConf)
+
+    val columns = bmat.toArray.grouped(bmat.rows)
+    val rows = columns.toSeq.transpose
+    val vectors = rows.map(row => new SparkDenseVector(row.toArray))
+
+    val rowsRDD: RDD[SparkVector] = sc.parallelize(vectors)
+    new SparkRowMatrix(rowsRDD)
+  }
+
+  def toBreezeMatrix(smat: SparkRowMatrix): DenseMatrix[Double] = {
+    val bmat = DenseMatrix.zeros[Double](smat.numCols().toInt, smat.numRows().toInt)
+    val smatRows: RDD[(Long, SparkVector)] = smat.rows.zipWithIndex().map(_.swap)
+    smatRows.cache()  // since we're using lookup a lot
+
+    for (irow <- 0 until bmat.rows) {
+      val vec: SparkVector = smatRows.lookup(irow.toLong).head
+      for (icol <- 0 until bmat.cols) {
+        bmat(icol, irow) = vec(icol)
+      }
+    }
+    bmat
+  }
+
+  def toBreezeVector(svec: SparkVector): DenseVector[Double] = {
+    val bvec = DenseVector.zeros[Double](svec.size)
+    for (ivec <- 0 until svec.size) {
+      bvec(ivec) = svec(ivec)
+    }
+    bvec
   }
 }

@@ -7,6 +7,8 @@ import breeze.numerics._
 import breeze.stats.regression.leastSquares
 
 object ReprocsUtil {
+  final val AllSingularValues = 0
+
   def isEmpty(support: DenseVector[Boolean]) = support.length == 0
 
   def sumBool(vec: DenseVector[Boolean]): Int = {
@@ -179,10 +181,7 @@ object ReprocsUtil {
     }
   }
 
-  def matrixNorm(mat: DenseMatrix[Double]): Double = {
-    val svd.SVD(_, s, _) = svd(mat)
-    s(0)
-  }
+  def matrixNorm(mat: DenseMatrix[Double]): Double = singularValues(mat, 1)(0)
 
   def subspaceChangeSmall(
       subspaceChangesDiff: mutable.Queue[Double],
@@ -195,5 +194,32 @@ object ReprocsUtil {
       changeSmall &= subspaceChangesDiff(i + 1) / subspaceChangesBase(i) < param.subspaceChangeThreshold
     }
     changeSmall
+  }
+
+  /* Returns the largest |top| singular values. */
+  def singularValues(
+      mat: DenseMatrix[Double],
+      top: Int = AllSingularValues): DenseVector[Double] = top match {
+
+    case AllSingularValues =>
+      val svd.SVD(_, s, _) = svd(mat)
+      s
+
+    case _ =>
+      val svd.SVD(_, s, _) = svd(mat)
+      s(0 until top)
+  }
+
+  /* Returns the largest |top| singular values and their associated left singular vectors. */
+  def mySVD(mat: DenseMatrix[Double], top: Int = AllSingularValues):
+      (DenseMatrix[Double], DenseVector[Double]) = top match {
+
+    case AllSingularValues =>
+      val svd.SVD(u, s, _) = svd(mat)
+      (u, s)
+
+    case _ =>
+      val svd.SVD(u, s, _) = svd(mat)
+      (u(::, 0 until top), s(0 until top))
   }
 }

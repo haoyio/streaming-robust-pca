@@ -131,7 +131,7 @@ class Reprocs(
     val modValDetect = (t - tHat + 1) % param.alpha
     if (flag == Reprocs.Detect && modValDetect== 0) {
       // check if subspace update is required
-      val svd.SVD(_, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
+      val s = ReprocsUtil.singularValues(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
       if (ReprocsUtil.containsGreater(s, sigMin)) {
         // set up variables for subspace update
         flag = Reprocs.PPCA
@@ -143,7 +143,7 @@ class Reprocs(
     val modValPPCA = (t - tHat + 1) % param.alpha
     if (flag == Reprocs.PPCA && modValPPCA == 0) {
       // sparse recovery subspace update
-      val svd.SVD(u, s, _) = svd(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
+      val (u, s) = ReprocsUtil.mySVD(ReprocsUtil.getNewSubspace(param.alpha, subspaceProject, lowRanks))
       val numSingularVectors = min(param.alpha / 3, ReprocsUtil.countGreater(s, sigMin))
       val oldSubspaceComponent = copy(newSubspaceComponent)
       newSubspaceComponent = u(::, 0 until numSingularVectors)
@@ -216,7 +216,7 @@ object Reprocs {
   def approxBasisEnergy(mTrain: DenseMatrix[Double], b: Double):
       (DenseMatrix[Double], DenseVector[Double]) = {
 
-    val svd.SVD(u, s, _) = svd(mTrain)
+    val (u, s) = ReprocsUtil.mySVD(mTrain)
     val energy = sum(s :* s)
     var energySoFar = 0.0
     for (i <- 0 until s.length) {

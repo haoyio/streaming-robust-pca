@@ -1,5 +1,6 @@
-import breeze.linalg.{DenseMatrix, DenseVector, norm, svd}
+import breeze.linalg._
 import breeze.optimize.{DiffFunction, ProjectedQuasiNewton}
+import breeze.stats.distributions.Gaussian
 
 import reprocs._
 
@@ -35,21 +36,30 @@ object TestReprocs extends App {
     println("minimizer = " + res + "\nminimum = " + f(res))
   }
 
-  def serialSVD(mat: DenseMatrix[Double]): (DenseMatrix[Double], DenseVector[Double]) = {
-    val svd.SVD(u, s, _) = svd(mat)
-    (u, s)
+  def serialSingularValues(mat: DenseMatrix[Double]): DenseVector[Double] = {
+    val svd.SVD(_, s, _) = svd(mat)
+    s
   }
 
   def testSVD(): Unit = {
+    val g = Gaussian(0,1)
+    val mat = DenseMatrix.zeros[Double](100, 30)
+    for (irow <- 0 until mat.rows; icol <- 0 until mat.cols) {
+      mat(irow, icol) = g.sample()
+    }
 
-    // TODO: test distributed version of mySVD against serialSVD
+    val ss: DenseVector[Double] = serialSingularValues(mat)
+    val ds: DenseVector[Double] = ReprocsUtil.singularValues(mat)
 
+    val vecnorm = norm(ss - ds, 2)
+
+    assert(vecnorm < ReprocsOpt.Tolerance)
+    println("singular values difference (l2-norm) = " + vecnorm)
   }
 
   // main script begins here
   val reprocs = Reprocs(DenseMatrix.rand[Double](10, 10))
   testL1Min()
   testWeightedL1Min()
-
   testSVD()
 }

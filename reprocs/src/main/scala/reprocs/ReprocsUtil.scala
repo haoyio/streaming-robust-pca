@@ -4,7 +4,7 @@ import org.apache.spark.{SparkContext, SparkConf}
 
 import scala.collection.mutable
 
-import breeze.linalg.{DenseMatrix, DenseVector, norm, svd}
+import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.regression.leastSquares
 
@@ -210,17 +210,6 @@ object ReprocsUtil {
       mat: DenseMatrix[Double],
       top: Int = AllSingularValues): DenseVector[Double] = top match {
 
-    /* // serial version
-    case AllSingularValues =>
-      val svd.SVD(_, s, _) = svd(mat)
-      s
-
-    case _ =>
-      val svd.SVD(_, s, _) = svd(mat)
-      s(0 until top)
-     */
-
-    // distributed version
     case AllSingularValues =>
       val svd: SingularValueDecomposition[SparkRowMatrix, SparkMatrix] =
         toSparkRowMatrix(mat).computeSVD(mat.cols, computeU = false)
@@ -236,17 +225,6 @@ object ReprocsUtil {
   def mySVD(mat: DenseMatrix[Double], top: Int = AllSingularValues):
       (DenseMatrix[Double], DenseVector[Double]) = top match {
 
-    /* // serial version
-    case AllSingularValues =>
-      val svd.SVD(u, s, _) = svd(mat)
-      (u, s)
-
-    case _ =>
-      val svd.SVD(u, s, _) = svd(mat)
-      (u(::, 0 until top), s(0 until top))
-     */
-
-    // distributed version
     case AllSingularValues =>
       val svd: SingularValueDecomposition[SparkRowMatrix, SparkMatrix] =
         toSparkRowMatrix(mat).computeSVD(mat.cols, computeU = true)
@@ -261,10 +239,9 @@ object ReprocsUtil {
   def toSparkRowMatrix(bmat: DenseMatrix[Double]): SparkRowMatrix = {
     val sparkConf = new SparkConf().setAppName(AppName)
                                    .setMaster(MasterString)
-    val sc = new SparkContext(sparkConf)
+    val sc = SparkContext.getOrCreate(sparkConf)
 
-    val columns = bmat.toArray.grouped(bmat.rows)
-    val rows = columns.toSeq.transpose
+    val rows = bmat.toArray.grouped(bmat.rows).toSeq.transpose
     val vectors = rows.map(row => new SparkDenseVector(row.toArray))
 
     val rowsRDD: RDD[SparkVector] = sc.parallelize(vectors)
@@ -272,14 +249,14 @@ object ReprocsUtil {
   }
 
   def toBreezeMatrix(smat: SparkRowMatrix): DenseMatrix[Double] = {
-    val bmat = DenseMatrix.zeros[Double](smat.numCols().toInt, smat.numRows().toInt)
+    val bmat = DenseMatrix.zeros[Double](smat.numRows().toInt, smat.numCols().toInt)
     val smatRows: RDD[(Long, SparkVector)] = smat.rows.zipWithIndex().map(_.swap)
     smatRows.cache()  // since we're using lookup a lot
 
     for (irow <- 0 until bmat.rows) {
-      val vec: SparkVector = smatRows.lookup(irow.toLong).head
+      val svec: SparkVector = smatRows.lookup(irow.toLong).head
       for (icol <- 0 until bmat.cols) {
-        bmat(icol, irow) = vec(icol)
+        bmat(irow, icol) = svec(icol)
       }
     }
     bmat
